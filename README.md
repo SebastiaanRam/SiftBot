@@ -1,76 +1,64 @@
-# SiftBot 🤖📄
+# SiftBot
 
-A serverless Telegram bot that delivers a daily digest of new scientific papers filtered by your research interests, learns from your feedback, and costs essentially nothing to run.
-
-## What it does
-
-1. Every morning, fetches new papers from arXiv, Semantic Scholar, and PubMed
-2. Passes each abstract through an LLM to score relevance against your keyword profiles
-3. Sends you a ranked Telegram digest with inline 👍 / 👎 / ❤️ rating buttons
-4. A weekly job retrains a lightweight preference model on your ratings, improving future rankings
-
-## Why this exists
-
-Google Scholar alerts are email-only and not filterable. arXiv_recbot is the closest prior art but requires a permanently running Python process, is arXiv-only, and has no LLM filtering. This project is fully serverless, multi-source, LLM-filtered, and deployable in under 30 minutes.
-
-## Architecture in one paragraph
-
-A **GitHub Actions cron job** runs daily, fetches papers, calls an LLM API to score abstracts, stores results in **Supabase** (Postgres), and sends a digest via the Telegram Bot API. When users tap rating buttons, Telegram pushes the callback to a **Cloudflare Worker** webhook endpoint, which writes the rating to Supabase. A second weekly GitHub Actions job reads all ratings, retrains the preference model, and commits the weights back to the repo. No servers. No idle processes.
-
-## Running cost estimate
-
-| Component | Free tier limit | Expected usage |
-|---|---|---|
-| GitHub Actions | 2,000 min/month | ~10 min/day = 300 min/month |
-| Cloudflare Workers | 100k req/day | <100 req/day |
-| Supabase | 500 MB, 50k rows | ~1 MB/month |
-| LLM API (Haiku) | — | ~$0.003/day = ~$0.10/month |
-
-**Total: ~$0.10/month** (just the LLM API calls).
+A Telegram bot that delivers a daily digest of new scientific papers filtered to your research interests. Papers are pulled from arXiv, Semantic Scholar, and PubMed, scored for relevance by an LLM, and ranked. Rate what you like — after 30 ratings the bot starts personalising your digest using a lightweight preference model.
 
 ---
 
-## Quick start
+## Using the bot
 
-### Prerequisites
+**[t.me/literature_sift_bot](https://t.me/literature_sift_bot)**
 
-- A Telegram account + a bot token from [@BotFather](https://t.me/botfather)
-- An [Anthropic API key](https://console.anthropic.com) (or OpenAI key if preferred)
-- A [Supabase](https://supabase.com) project (free tier)
+1. Open the link above and send `/start`
+2. Describe your research interests as a comma-separated list, for example:
+   ```
+   computational pathology, whole slide image analysis, vision language models
+   ```
+3. Every morning you'll receive a ranked digest with inline rating buttons (👎 👍 ❤️)
+4. Use `/topics` to update your interests at any time, `/pause` and `/resume` to control delivery
+
+That's it!
+
+---
+
+## Self-hosting
+
+If you want to run your own instance — for privacy, custom paper sources, or just to tinker — there are two deployment options.
+
+### Option A — Serverless (GitHub Actions + Supabase + Cloudflare)
+
+Zero infrastructure to manage. The daily digest runs as a GitHub Actions cron job; rating callbacks are handled by a Cloudflare Worker.
+
+**Prerequisites**
+- A Telegram bot token from [@BotFather](https://t.me/botfather)
+- An [Anthropic API key](https://console.anthropic.com)
+- A [Supabase](https://supabase.com) project (free tier is sufficient)
 - A [Cloudflare](https://cloudflare.com) account (free tier)
-- A GitHub account
 - *(Optional)* A [Semantic Scholar API key](https://www.semanticscholar.org/product/api) for higher rate limits
 
-### 1. Fork and clone
+**1. Fork and clone**
 
 ```bash
 git clone https://github.com/your-username/SiftBot
 cd SiftBot
 ```
 
-### 2. Set up Supabase
+**2. Set up Supabase**
 
-1. Create a new Supabase project
-2. Open the SQL editor and run `db/schema.sql`
-3. Copy your project URL and `anon` key
+Create a new project, open the SQL editor, and run `db/schema.sql`. Note your project URL and `anon` key.
 
-### 3. Configure environment variables
+**3. Configure secrets**
 
 ```bash
-cp .env.example .env
-# Fill in all values in .env
+cp env.example .env
+# Fill in all values
 ```
 
-For GitHub Actions, add the same variables as repository secrets:
+Add the same variables as repository secrets in GitHub:
 `Settings → Secrets and variables → Actions → New repository secret`
 
-Required secrets:
-- `TELEGRAM_BOT_TOKEN`
-- `ANTHROPIC_API_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_KEY`
+Required: `TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`
 
-### 4. Deploy the Cloudflare Worker
+**4. Deploy the Cloudflare Worker**
 
 ```bash
 cd cloudflare
@@ -84,68 +72,59 @@ npx wrangler deploy
 
 Copy the resulting `*.workers.dev` URL.
 
-### 5. Register the Telegram webhook
+**5. Register the Telegram webhook**
 
 ```bash
-curl "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://your-worker.workers.dev/webhook"
+curl "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://your-worker.workers.dev"
 ```
 
-### 6. Register yourself as the first user
+**6. Activate workflows**
 
-Start a conversation with your bot and send `/start`. This registers your `chat_id` in the database.
-
-### 7. Enable the GitHub Actions workflows
-
-The workflows in `.github/workflows/` are set to run on schedule. Push to `main` to activate them, or trigger them manually from the Actions tab to test.
+Push to `main` to activate the scheduled workflows, or trigger them manually from the Actions tab to test.
 
 ---
 
-## Adding yourself as a user
+### Option B — Docker Compose (local server or VPS)
 
-Send `/start` to the bot. It will prompt you for keyword profiles — comma-separated topic descriptions, e.g.:
-
-```
-computational pathology, whole slide image analysis, vision language models in pathology
-```
-
-You can update your profile anytime with `/topics`.
-
-## Self-hosting with Docker (alternative to serverless)
-
-If you prefer running everything locally or on a VPS/homeserver:
+Runs the digest scheduler and bot in a single container using SQLite instead of Supabase. Good for a homeserver or VPS.
 
 ```bash
-touch SiftBot.db   # must exist as a file before first run; Docker would otherwise create it as a directory
+cp env.example .env
+# Fill in TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY (Supabase vars not needed)
+touch SiftBot.db
 docker compose up -d
 ```
 
-This runs the scheduler and bot polling mode in a single container, using SQLite instead of Supabase.
+The container runs the daily digest on schedule and handles Telegram polling directly.
 
 ---
+
+## Architecture
+
+A **GitHub Actions cron job** runs daily, fetches papers from arXiv, Semantic Scholar, and PubMed, calls an LLM API to score abstracts against each user's keyword profile, stores results in **Supabase** (Postgres), and sends a digest via the Telegram Bot API. When users tap rating buttons, Telegram pushes the callback to a **Cloudflare Worker** webhook, which writes the rating to Supabase. A second weekly Actions job reads all ratings, retrains a per-user TF-IDF + logistic regression preference model, and commits the weights back to the repo.
 
 ## Project structure
 
 ```
 SiftBot/
-├── .github/
-│   └── workflows/
-│       ├── daily_digest.yml       # Runs every morning
-│       └── weekly_retrain.yml     # Retrains preference model
+├── .github/workflows/
+│   ├── daily_digest.yml       # Runs every morning at 07:00 UTC
+│   └── weekly_retrain.yml     # Retrains preference models every Monday
 ├── worker/
-│   ├── fetch.py                   # arXiv, Semantic Scholar, PubMed clients
-│   ├── filter.py                  # LLM relevance scoring
-│   ├── digest.py                  # Ranking + digest assembly
-│   ├── retrain.py                 # Preference model training
-│   └── main.py                    # Daily digest entrypoint
+│   ├── fetch.py               # arXiv, Semantic Scholar, PubMed clients
+│   ├── filter.py              # LLM relevance scoring
+│   ├── digest.py              # Ranking + Telegram sender
+│   ├── retrain.py             # Preference model training
+│   └── main.py                # Daily digest entrypoint
 ├── db/
-│   ├── client.py                  # Supabase client wrapper
-│   └── schema.sql                 # Database schema
+│   ├── client.py              # Supabase client wrapper
+│   └── schema.sql             # Database schema
 ├── cloudflare/
-│   ├── webhook.js                 # Cloudflare Worker — commands & rating callbacks
-│   └── wrangler.toml              # Cloudflare config
+│   ├── webhook.js             # Cloudflare Worker — commands & rating callbacks
+│   └── wrangler.toml
 ├── docker-compose.yml
 ├── requirements.txt
-└── README.md
+└── env.example
 ```
 
 ---
@@ -155,11 +134,3 @@ SiftBot/
 Paper data from [Semantic Scholar](https://www.semanticscholar.org/):
 
 > Kinney et al., *The Semantic Scholar Open Data Platform*, 2023. [arXiv:2301.10140](https://arxiv.org/abs/2301.10140)
-
----
-
-## Contributing / Donating
-
-<!-- If you find this useful and want to support it, a coffee is always appreciated: [ko-fi.com/yourname](https://ko-fi.com) -->
-
-PRs are welcome.
