@@ -1,0 +1,60 @@
+{
+  "name": "SiftBot",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.typeCheckingMode": "basic",
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+          }
+        },
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true
+      },
+      "extensions": [
+        "anthropic.claude-code",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "GitHub.copilot"
+      ]
+    }
+  },
+  "forwardPorts": [8443],
+  "initializeCommand": "mkdir -p ${localWorkspaceFolder}/.claude-memory && mkdir -p ${localEnv:HOME}/.claude && touch ${localEnv:HOME}/.claude.json",
+  "onCreateCommand": "mkdir -p /home/vscode/.vscode-server/data/User/globalStorage && ln -snf /home/vscode/.claude-memory /home/vscode/.vscode-server/data/User/globalStorage/anthropic.claude-code && chown -R vscode:vscode /home/vscode/.vscode-server /home/vscode/.claude-memory /home/vscode/.claude /home/vscode/.claude.json || true",
+  "postCreateCommand": "npm install -g wrangler @anthropic-ai/claude-code",
+  "postStartCommand": "cp -n .env.example .env 2>/dev/null; true",
+  "remoteEnv": {
+    "USE_SQLITE": "true",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUNBUFFERED": "1"
+  },
+  "mounts": [
+    "source=siftbot-model,target=${containerWorkspaceFolder}/model,type=volume",
+    "source=siftbot-db,target=${containerWorkspaceFolder}/data,type=volume",
+    "source=${localWorkspaceFolder}/.claude-memory,target=/home/vscode/.claude-memory,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached"
+  ],
+  "remoteUser": "vscode"
+}

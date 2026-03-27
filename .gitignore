@@ -1,0 +1,50 @@
+# Environment
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Trained model weights (committed by CI, not manually)
+# Remove these lines if you want to track them locally too
+model/*.pkl
+model/*.joblib
+
+# Local database (Docker / SQLite mode)
+*.db
+*.sqlite
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Cloudflare
+cloudflare/node_modules/
+cloudflare/.wrangler/
+
+# Claude Code
+.claude-memory/
+.claude/

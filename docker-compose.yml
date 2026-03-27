@@ -1,0 +1,10 @@
+services:
+  siftbot:
+    build: .
+    env_file: .env
+    volumes:
+      - ./model:/app/model        # persist trained model weights
+      - ./SiftBot.db:/app/SiftBot.db  # SQLite DB for local mode
+    restart: unless-stopped
+    environment:
+      - USE_SQLITE=true           # switches from Supabase to local SQLite

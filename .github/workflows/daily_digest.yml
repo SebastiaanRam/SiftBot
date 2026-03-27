@@ -1,0 +1,36 @@
+name: Daily Digest
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # 07:00 UTC daily
+  workflow_dispatch:        # allow manual trigger from GitHub UI
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily digest
+        run: python -m worker.main
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEMANTIC_SCHOLAR_API_KEY: ${{ secrets.SEMANTIC_SCHOLAR_API_KEY }}
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+          MIN_RELEVANCE_SCORE: ${{ vars.MIN_RELEVANCE_SCORE || '6' }}
+          MAX_PAPERS_PER_DIGEST: ${{ vars.MAX_PAPERS_PER_DIGEST || '10' }}
+          DAYS_BACK: ${{ vars.DAYS_BACK || '1' }}
+          ARXIV_CATEGORIES: ${{ vars.ARXIV_CATEGORIES || 'cs.CV,eess.IV,cs.LG,q-bio.QM' }}
+          S2_QUERY: ${{ vars.S2_QUERY || 'machine learning' }}
+          PUBMED_QUERY: ${{ vars.PUBMED_QUERY || '' }}
