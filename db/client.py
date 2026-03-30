@@ -181,23 +181,19 @@ class DBClient:
         """Return ratings joined with paper text for model training."""
         res = (
             self._db.table("ratings")
-            .select("paper_id, score, papers(title, abstract), paper_scores(llm_score)")
+            .select("paper_id, score, papers(title, abstract)")
             .eq("user_chat_id", chat_id)
             .execute()
         )
         rows = []
         for row in res.data:
             paper = row.get("papers") or {}
-            score_info = row.get("paper_scores") or {}
-            if isinstance(score_info, list):
-                score_info = score_info[0] if score_info else {}
             rows.append(
                 {
                     "paper_id": row["paper_id"],
                     "score": row["score"],
                     "title": paper.get("title", ""),
                     "abstract": paper.get("abstract", ""),
-                    "llm_score": score_info.get("llm_score"),
                 }
             )
         return rows
