@@ -125,14 +125,16 @@ class DBClient:
         )
         sent_ids = {row["paper_id"] for row in sent_res.data}
 
-        # Get scored papers for this user above min_score
+        # Get scored papers for this user above min_score, most recently scored
+        # first so today's papers aren't crowded out by older high-scoring ones.
         scores_res = (
             self._db.table("paper_scores")
-            .select("paper_id, final_score, llm_score, llm_explanation")
+            .select("paper_id, final_score, llm_score, llm_explanation, scored_at")
             .eq("user_id", user_id)
             .gte("final_score", min_score)
+            .order("scored_at", desc=True)
             .order("final_score", desc=True)
-            .limit(max_papers * 5)  # fetch extra, filter below
+            .limit(max_papers * 10)  # fetch extra, filter below
             .execute()
         )
 
@@ -158,6 +160,7 @@ class DBClient:
             if len(results) >= max_papers:
                 break
 
+        results.sort(key=lambda p: p["final_score"], reverse=True)
         return results
 
     def log_sent(self, user_id: int, paper_id: str) -> None:

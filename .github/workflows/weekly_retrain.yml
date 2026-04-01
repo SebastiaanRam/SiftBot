@@ -1,4 +1,4 @@
-name: Weekly Retrain
+itname: Weekly Retrain
 
 on:
   schedule:
