@@ -41,8 +41,11 @@ CREATE TABLE IF NOT EXISTS paper_scores (
     pref_score      NUMERIC(4,2),                 -- 0.00–10.00 from preference model (nullable)
     final_score     NUMERIC(4,2) GENERATED ALWAYS AS (
                         CASE
-                            WHEN pref_score IS NULL THEN llm_score
-                            ELSE ROUND(0.6 * llm_score + 0.4 * pref_score, 2)
+                            WHEN llm_score IS NOT NULL AND pref_score IS NOT NULL
+                                THEN ROUND(0.6 * llm_score + 0.4 * pref_score, 2)
+                            WHEN pref_score IS NOT NULL THEN pref_score
+                            WHEN llm_score IS NOT NULL THEN llm_score
+                            ELSE NULL
                         END
                     ) STORED,
     llm_explanation TEXT,                         -- 1-sentence reason from LLM

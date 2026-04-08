@@ -19,6 +19,7 @@ from telegram import Bot
 from db.client import DBClient
 from worker.fetch import Paper, deduplicate_new, fetch_all, title_hash
 from worker.filter import ScoredPaper, score_papers
+from worker.prefilter import PaperIndex
 from worker.retrain import compute_pref_scores, load_model
 
 
@@ -75,7 +76,7 @@ def _upsert_scores(
 
 async def run_for_user(
     user: dict,
-    all_papers: list[Paper],
+    paper_index: PaperIndex,
     db: DBClient,
     bot: Bot,
     min_score: float,
@@ -88,6 +89,7 @@ async def run_for_user(
     profile: str = user.get("keyword_profile") or ""
     max_papers: int = user.get("max_papers") or int(os.environ.get("MAX_PAPERS_PER_DIGEST", "10"))
     days_back: int = int(os.environ.get("DAYS_BACK", "1"))
+    top_n: int = int(os.environ.get("PREFILTER_TOP_N", "30"))
 
     if not profile:
         print(f"[main] Skipping user {chat_id}: no keyword_profile set")
@@ -95,25 +97,43 @@ async def run_for_user(
 
     print(f"\n[main] Processing user {chat_id} — profile: {profile[:80]}…")
 
-    # Score any new papers against this user's profile and persist
-    if all_papers and not dry_run:
-        scored = score_papers(all_papers, profile, min_score=min_score)
+    # ── Stage 1: cheap pre-filtering ──────────────────────────────────────
+    model = load_model(user_id)
+    if model is not None:
+        candidates = paper_index.top_n_for_model(model, n=top_n)
+        if not candidates:
+            # Model prediction failed — fall back to keyword profile
+            print(f"[main] Pref model returned no candidates; falling back to TF-IDF")
+            model = None
+            candidates = paper_index.top_n_for_profile(profile, n=top_n)
+        else:
+            print(f"[main] Pre-filtered to {len(candidates)} candidates via pref model")
+    else:
+        candidates = paper_index.top_n_for_profile(profile, n=top_n)
+        print(f"[main] Pre-filtered to {len(candidates)} candidates via TF-IDF")
+
+    if not candidates:
+        print(f"[main] No candidates for user {chat_id}")
+        return
+
+    # ── Stage 2: LLM reranking on candidates only ────────────────────────
+    if candidates and not dry_run:
+        scored = score_papers(candidates, profile, min_score=min_score)
         if scored:
             paper_dicts = [
                 {"id": sp.paper.id, "title": sp.paper.title, "abstract": sp.paper.abstract}
                 for sp in scored
             ]
-            pref_scores = compute_pref_scores(user_id, paper_dicts)
+            pref_scores = compute_pref_scores(user_id, paper_dicts, model=model)
             if pref_scores:
                 print(f"[main] Preference model provided scores for {len(pref_scores)} papers")
             _upsert_scores(scored, user_id, db, pref_scores)
-    elif all_papers and dry_run:
-        scored = score_papers(all_papers, profile, min_score=min_score)
+    elif candidates and dry_run:
+        scored = score_papers(candidates, profile, min_score=min_score)
     else:
         scored = []
 
     if dry_run:
-        # In dry-run, use in-memory scored papers directly
         if not scored:
             print(f"[main] No relevant papers for user {chat_id}")
             return
@@ -134,8 +154,6 @@ async def run_for_user(
             for sp in sorted(scored, key=lambda x: x.llm_score, reverse=True)[:max_papers]
         ]
     else:
-        # Always query DB for unsent papers — includes today's newly scored
-        # papers AND any from prior runs that weren't sent yet.
         papers_to_send = db.get_unsent_papers(user_id, min_score, max_papers, days_back)
         if not papers_to_send:
             print(f"[main] No unsent papers for user {chat_id}")
@@ -198,10 +216,14 @@ async def main() -> None:
     else:
         new_papers = all_papers  # In dry-run, skip DB entirely
 
+    # Build TF-IDF index once, shared across all users
+    paper_index = PaperIndex(all_papers)
+    print(f"[main] Built paper index over {len(all_papers)} papers")
+
     for user in users:
         await run_for_user(
             user=user,
-            all_papers=all_papers,
+            paper_index=paper_index,
             db=db,
             bot=bot,
             min_score=min_score,

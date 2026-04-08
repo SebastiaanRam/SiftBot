@@ -96,10 +96,13 @@ def load_model(user_id: int) -> Pipeline | None:
 
 
 def compute_pref_scores(
-    user_id: int, papers: list[dict[str, Any]]
+    user_id: int,
+    papers: list[dict[str, Any]],
+    model: Pipeline | None = None,
 ) -> dict[str, float]:
     """Return a dict mapping paper_id → pref_score (0–10) for scored papers."""
-    model = load_model(user_id)
+    if model is None:
+        model = load_model(user_id)
     if model is None or not papers:
         return {}
 

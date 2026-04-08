@@ -69,16 +69,18 @@ class DBClient:
         self,
         paper_id: str,
         user_id: int,
-        llm_score: float,
-        llm_explanation: str,
+        llm_score: float | None = None,
+        llm_explanation: str | None = None,
         pref_score: float | None = None,
     ) -> None:
         data: dict[str, Any] = {
             "paper_id": paper_id,
             "user_id": user_id,
-            "llm_score": llm_score,
-            "llm_explanation": llm_explanation,
         }
+        if llm_score is not None:
+            data["llm_score"] = llm_score
+        if llm_explanation is not None:
+            data["llm_explanation"] = llm_explanation
         if pref_score is not None:
             data["pref_score"] = pref_score
         self._db.table("paper_scores").upsert(

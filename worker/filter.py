@@ -14,7 +14,7 @@ import anthropic
 from worker.fetch import Paper
 
 MODEL = "claude-haiku-4-5-20251001"
-BATCH_SIZE = 5
+BATCH_SIZE = 10
 
 SYSTEM_PROMPT = """\
 You are a scientific paper relevance assistant. Your job is to evaluate whether a list of papers is relevant to a researcher's interests.
@@ -88,7 +88,7 @@ def _score_batch(
         try:
             response = client.messages.create(
                 model=MODEL,
-                max_tokens=800,
+                max_tokens=1500,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
