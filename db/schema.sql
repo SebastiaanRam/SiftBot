@@ -7,9 +7,12 @@ CREATE TABLE IF NOT EXISTS users (
     chat_id         BIGINT UNIQUE NOT NULL,      -- Telegram chat ID
     keyword_profile TEXT,                         -- comma-separated topic descriptions
     active          BOOLEAN DEFAULT TRUE,
-    max_papers      INT DEFAULT 10,               -- max papers per daily digest
-    pending_action  TEXT,                         -- "awaiting_topics" etc. for multi-step commands
-    created_at      TIMESTAMPTZ DEFAULT NOW()
+    max_papers        INT DEFAULT 10,               -- max papers per daily digest
+    digest_frequency  INT DEFAULT 1,               -- days between digests (1 = daily)
+    next_digest_date  DATE DEFAULT CURRENT_DATE,   -- next scheduled digest date
+    min_rating        NUMERIC(3,1) DEFAULT 6.0,    -- minimum LLM score to include a paper
+    pending_action    TEXT,                        -- "awaiting_topics" etc. for multi-step commands
+    created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ── Papers ───────────────────────────────────────────────────────────────────
@@ -67,6 +70,11 @@ CREATE TABLE IF NOT EXISTS ratings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings(user_chat_id, created_at DESC);
+
+-- ── Migrations (run in Supabase SQL editor for existing databases) ────────────
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS digest_frequency INT DEFAULT 1;
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS next_digest_date DATE DEFAULT CURRENT_DATE;
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS min_rating NUMERIC(3,1) DEFAULT 6.0;
 
 -- ── Digest log ───────────────────────────────────────────────────────────────
 -- Tracks which papers were sent on which day so we never re-send.

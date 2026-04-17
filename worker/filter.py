@@ -13,7 +13,7 @@ import anthropic
 
 from worker.fetch import Paper
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-haiku-4-5"
 BATCH_SIZE = 10
 
 SYSTEM_PROMPT = """\
@@ -89,7 +89,7 @@ def _score_batch(
             response = client.messages.create(
                 model=MODEL,
                 max_tokens=1500,
-                system=SYSTEM_PROMPT,
+                system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": prompt}],
             )
             text = response.content[0].text.strip()

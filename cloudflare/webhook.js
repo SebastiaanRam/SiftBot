@@ -3,8 +3,9 @@
  *
  * Handles:
  *   - Inline button presses (rating callbacks)
- *   - Bot commands: /start, /topics, /pause, /resume, /help
- *   - Free text (for multi-step /topics flow)
+ *   - Bot commands: /start, /topics, /pause, /resume, /help,
+ *                   /frequency, /limit, /rating
+ *   - Free text (for multi-step flows)
  *
  * Secrets required (set with `wrangler secret put`):
  *   TELEGRAM_BOT_TOKEN
@@ -123,11 +124,27 @@ async function handleMessage(message, env) {
     await handleHelp(env, chatId);
     return;
   }
+  if (text.startsWith("/frequency")) {
+    await handleFrequency(env, chatId, text);
+    return;
+  }
+  if (text.startsWith("/limit")) {
+    await handleLimit(env, chatId, text);
+    return;
+  }
+  if (text.startsWith("/rating")) {
+    await handleRating(env, chatId, text);
+    return;
+  }
 
   // Free text — check pending_action
   const user = await getUser(env, chatId);
   if (user && user.pending_action === "awaiting_topics") {
     await saveTopics(env, chatId, text.trim());
+    return;
+  }
+  if (user && user.pending_action && user.pending_action.startsWith("awaiting_frequency_start_day|")) {
+    await saveFrequencyStartDay(env, chatId, user.pending_action, text.trim());
     return;
   }
 
@@ -191,9 +208,131 @@ async function handleHelp(env, chatId) {
   await sendMessage(
     env,
     chatId,
-    `*SiftBot Help*\n\n/start — register and set your interests\n/topics — update your research interests\n/pause — stop receiving daily digests\n/resume — restart daily digests\n/help — show this message\n\nRate papers with 👎 👍 ❤️ — after 30 ratings I'll personalise your digest.`,
+    `*SiftBot Help*\n\n/start — register and set your interests\n/topics — update your research interests\n/pause — stop receiving digests\n/resume — restart digests\n/frequency <days> — digest interval in days (default: 1)\n/limit <n> — max papers per digest (default: 10)\n/rating <score> — minimum relevance score 0–10 (default: 6)\n/help — show this message\n\nRate papers with 👎 👍 ❤️ — after 30 ratings I'll personalise your digest.`,
     "Markdown"
   );
+}
+
+async function handleFrequency(env, chatId, text) {
+  const user = await getUser(env, chatId);
+  if (!user) {
+    await sendMessage(env, chatId, "Please /start first.");
+    return;
+  }
+
+  const parts = text.trim().split(/\s+/);
+  const n = parseInt(parts[1], 10);
+  if (isNaN(n) || n < 1 || n > 365) {
+    const current = user.digest_frequency || 1;
+    await sendMessage(
+      env, chatId,
+      `Usage: /frequency <days>\n\nSets how often you receive a digest. Current: *${current}* day(s). Range: 1–365.`,
+      "Markdown"
+    );
+    return;
+  }
+
+  if (n === 1) {
+    await setUserField(env, chatId, { digest_frequency: 1, next_digest_date: todayISO(), pending_action: null });
+    await sendMessage(env, chatId, "✅ Digest frequency set to *daily*.", "Markdown");
+    return;
+  }
+
+  await setUserField(env, chatId, { pending_action: `awaiting_frequency_start_day|${n}` });
+  await sendMessage(
+    env, chatId,
+    `📅 Every *${n} days* — on which day would you like the digest to start?\n\n_(e.g. Monday, Tuesday, …)_`,
+    "Markdown"
+  );
+}
+
+async function saveFrequencyStartDay(env, chatId, pendingAction, dayText) {
+  const freq = parseInt(pendingAction.split("|")[1], 10);
+  const startDate = nextOccurrenceOfDay(dayText);
+
+  if (!startDate) {
+    await sendMessage(env, chatId, "I didn't recognise that day. Please enter a day name like Monday, Tuesday, etc.");
+    return;
+  }
+
+  const dayName = dayText.charAt(0).toUpperCase() + dayText.slice(1).toLowerCase();
+  await setUserField(env, chatId, {
+    digest_frequency: freq,
+    next_digest_date: startDate,
+    pending_action: null,
+  });
+  await sendMessage(
+    env, chatId,
+    `✅ Done! I'll send your digest every *${freq} days*, starting on *${dayName}* (${startDate}).`,
+    "Markdown"
+  );
+}
+
+async function handleLimit(env, chatId, text) {
+  const user = await getUser(env, chatId);
+  if (!user) {
+    await sendMessage(env, chatId, "Please /start first.");
+    return;
+  }
+
+  const parts = text.trim().split(/\s+/);
+  const n = parseInt(parts[1], 10);
+  if (isNaN(n) || n < 1 || n > 50) {
+    const current = user.max_papers || 10;
+    await sendMessage(
+      env, chatId,
+      `Usage: /limit <number>\n\nSets the maximum papers per digest. Current: *${current}*. Range: 1–50.`,
+      "Markdown"
+    );
+    return;
+  }
+
+  await setUserField(env, chatId, { max_papers: n });
+  await sendMessage(env, chatId, `✅ Paper limit set to *${n}* per digest.`, "Markdown");
+}
+
+async function handleRating(env, chatId, text) {
+  const user = await getUser(env, chatId);
+  if (!user) {
+    await sendMessage(env, chatId, "Please /start first.");
+    return;
+  }
+
+  const parts = text.trim().split(/\s+/);
+  const n = parseFloat(parts[1]);
+  if (isNaN(n) || n < 0 || n > 10) {
+    const current = user.min_rating ?? 6.0;
+    await sendMessage(
+      env, chatId,
+      `Usage: /rating <score>\n\nOnly papers scoring at or above this threshold are sent. Current: *${current}*. Range: 0–10.`,
+      "Markdown"
+    );
+    return;
+  }
+
+  await setUserField(env, chatId, { min_rating: n });
+  await sendMessage(env, chatId, `✅ Minimum rating set to *${n}*. Papers scoring below this will be filtered out.`, "Markdown");
+}
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
+function todayISO() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function nextOccurrenceOfDay(dayText) {
+  const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const target = days.indexOf(dayText.toLowerCase().trim());
+  if (target === -1) return null;
+
+  const today = new Date();
+  const todayDay = today.getUTCDay();
+  let daysUntil = target - todayDay;
+  if (daysUntil < 0) daysUntil += 7;
+
+  const result = new Date(today);
+  result.setUTCDate(today.getUTCDate() + daysUntil);
+  return result.toISOString().split("T")[0];
 }
 
 async function saveTopics(env, chatId, topics) {

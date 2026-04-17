@@ -20,14 +20,14 @@ class PaperIndex:
 
     def __init__(self, papers: list[Paper]) -> None:
         self._papers = papers
-        texts = [f"{p.title} {p.abstract}" for p in papers]
+        self._texts = [f"{p.title} {p.abstract}" for p in papers]
         self._vectorizer = TfidfVectorizer(
             max_features=5000,
             ngram_range=(1, 2),
             sublinear_tf=True,
             stop_words="english",
         )
-        self._paper_matrix = self._vectorizer.fit_transform(texts)
+        self._paper_matrix = self._vectorizer.fit_transform(self._texts)
 
     def top_n_for_profile(self, keyword_profile: str, n: int = 30) -> list[Paper]:
         """Cold-start: rank papers by cosine similarity to keyword profile."""
@@ -40,9 +40,8 @@ class PaperIndex:
         self, model: Pipeline, n: int = 30,
     ) -> list[Paper]:
         """Trained users: rank by preference model probability, return top n."""
-        texts = [f"{p.title} {p.abstract}" for p in self._papers]
         try:
-            proba = model.predict_proba(texts)[:, 1]
+            proba = model.predict_proba(self._texts)[:, 1]
         except Exception as exc:
             print(f"[prefilter] predict_proba failed: {exc}")
             return []

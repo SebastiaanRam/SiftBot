@@ -10,14 +10,18 @@ from telegram.constants import ParseMode
 
 if TYPE_CHECKING:
     from db.client import DBClient
-    from worker.filter import ScoredPaper
 
 COLD_START_THRESHOLD = 30
 
-_INTRO_MESSAGE = (
+_INTRO_MESSAGE_COLD = (
     "📬 *Today's paper digest is ready!*\n\n"
     "_Rate each paper to help me learn your taste. "
     "After {threshold} ratings I'll start personalising your recommendations._"
+)
+
+_INTRO_MESSAGE_PERSONALISED = (
+    "📬 *Today's personalised digest is ready!*\n\n"
+    "_Papers are ranked by your taste. Keep rating to refine your recommendations._"
 )
 
 _MILESTONE_MESSAGE = (
@@ -84,7 +88,10 @@ async def send_digest(
         return
 
     # Intro message
-    intro = _INTRO_MESSAGE.format(threshold=COLD_START_THRESHOLD)
+    if rating_count >= COLD_START_THRESHOLD:
+        intro = _INTRO_MESSAGE_PERSONALISED
+    else:
+        intro = _INTRO_MESSAGE_COLD.format(threshold=COLD_START_THRESHOLD)
     if not dry_run:
         await bot.send_message(
             chat_id=chat_id,
@@ -114,16 +121,14 @@ async def send_digest(
                 print(f"[digest] Failed to send paper {paper['id']}: {exc}")
 
     # Cold-start milestone: send once when user crosses the threshold
-    if not dry_run and rating_count >= COLD_START_THRESHOLD:
-        # Check if this is the first time above threshold (heuristic: send if count == threshold)
-        if rating_count == COLD_START_THRESHOLD:
-            try:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=_MILESTONE_MESSAGE,
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-            except Exception as exc:
-                print(f"[digest] Failed to send milestone message: {exc}")
+    if not dry_run and rating_count == COLD_START_THRESHOLD:
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=_MILESTONE_MESSAGE,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as exc:
+            print(f"[digest] Failed to send milestone message: {exc}")
 
     print(f"[digest] Sent {len(papers)} papers to chat_id={chat_id}")
