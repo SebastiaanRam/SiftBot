@@ -62,9 +62,7 @@ def fetch_arxiv(categories: list[str], days_back: int = 1) -> list[Paper]:
             continue
 
         for entry in feed.entries:
-            # Parse submitted date from the updated/published field
-            published_str = getattr(entry, "published", None) or getattr(entry, "updated", None)
-            if not published_str:
+            if not getattr(entry, "published_parsed", None):
                 continue
             try:
                 pub_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)

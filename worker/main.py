@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import os
 import sys
+from datetime import date, timedelta
 
 from dotenv import load_dotenv
 from telegram import Bot
@@ -89,6 +90,10 @@ async def run_for_user(
     profile: str = user.get("keyword_profile") or ""
     max_papers: int = user.get("max_papers") or int(os.environ.get("MAX_PAPERS_PER_DIGEST", "10"))
     days_back: int = int(os.environ.get("DAYS_BACK", "1"))
+
+    user_min_rating = user.get("min_rating")
+    if user_min_rating is not None:
+        min_score = float(user_min_rating)
     top_n: int = int(os.environ.get("PREFILTER_TOP_N", "30"))
 
     if not profile:
@@ -117,21 +122,16 @@ async def run_for_user(
         return
 
     # ── Stage 2: LLM reranking on candidates only ────────────────────────
-    if candidates and not dry_run:
-        scored = score_papers(candidates, profile, min_score=min_score)
-        if scored:
-            paper_dicts = [
-                {"id": sp.paper.id, "title": sp.paper.title, "abstract": sp.paper.abstract}
-                for sp in scored
-            ]
-            pref_scores = compute_pref_scores(user_id, paper_dicts, model=model)
-            if pref_scores:
-                print(f"[main] Preference model provided scores for {len(pref_scores)} papers")
-            _upsert_scores(scored, user_id, db, pref_scores)
-    elif candidates and dry_run:
-        scored = score_papers(candidates, profile, min_score=min_score)
-    else:
-        scored = []
+    scored = score_papers(candidates, profile, min_score=min_score)
+    if scored and not dry_run:
+        paper_dicts = [
+            {"id": sp.paper.id, "title": sp.paper.title, "abstract": sp.paper.abstract}
+            for sp in scored
+        ]
+        pref_scores = compute_pref_scores(user_id, paper_dicts, model=model)
+        if pref_scores:
+            print(f"[main] Preference model provided scores for {len(pref_scores)} papers")
+        _upsert_scores(scored, user_id, db, pref_scores)
 
     if dry_run:
         if not scored:
@@ -194,10 +194,20 @@ async def main() -> None:
     else:
         users = db.get_active_users()
 
-    print(f"[main] {len(users)} active user(s)")
+    today_str = date.today().isoformat()
+    eligible = []
+    for u in users:
+        next_date = u.get("next_digest_date")
+        if next_date is None or next_date <= today_str:
+            eligible.append(u)
+        else:
+            print(f"[main] Skipping user {u['chat_id']}: next digest scheduled for {next_date}")
+    users = eligible
+
+    print(f"[main] {len(users)} user(s) due for a digest today")
 
     if not users:
-        print("[main] No active users. Exiting.")
+        print("[main] No users due today. Exiting.")
         return
 
     # Fetch papers once, then filter per user
@@ -229,6 +239,10 @@ async def main() -> None:
             min_score=min_score,
             dry_run=args.dry_run,
         )
+        if not args.dry_run:
+            freq = user.get("digest_frequency") or 1
+            next_date = (date.today() + timedelta(days=freq)).isoformat()
+            db.set_user_field(user["chat_id"], next_digest_date=next_date)
 
     print("\n[main] Done.")
 

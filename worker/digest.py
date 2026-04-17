@@ -10,7 +10,6 @@ from telegram.constants import ParseMode
 
 if TYPE_CHECKING:
     from db.client import DBClient
-    from worker.filter import ScoredPaper
 
 COLD_START_THRESHOLD = 30
 
@@ -114,16 +113,14 @@ async def send_digest(
                 print(f"[digest] Failed to send paper {paper['id']}: {exc}")
 
     # Cold-start milestone: send once when user crosses the threshold
-    if not dry_run and rating_count >= COLD_START_THRESHOLD:
-        # Check if this is the first time above threshold (heuristic: send if count == threshold)
-        if rating_count == COLD_START_THRESHOLD:
-            try:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=_MILESTONE_MESSAGE,
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-            except Exception as exc:
-                print(f"[digest] Failed to send milestone message: {exc}")
+    if not dry_run and rating_count == COLD_START_THRESHOLD:
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=_MILESTONE_MESSAGE,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception as exc:
+            print(f"[digest] Failed to send milestone message: {exc}")
 
     print(f"[digest] Sent {len(papers)} papers to chat_id={chat_id}")

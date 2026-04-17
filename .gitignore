@@ -1,7 +1,6 @@
 # Environment
 .env
 .env.local
-.vscode
 
 # Python
 __pycache__/

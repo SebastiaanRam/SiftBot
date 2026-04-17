@@ -8,15 +8,9 @@ from typing import Any
 from supabase import create_client, Client
 
 
-def get_client() -> Client:
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ["SUPABASE_KEY"]
-    return create_client(url, key)
-
-
 class DBClient:
     def __init__(self) -> None:
-        self._db: Client = get_client()
+        self._db: Client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
     # ── Users ──────────────────────────────────────────────────────────────────
 
@@ -86,13 +80,6 @@ class DBClient:
         self._db.table("paper_scores").upsert(
             data, on_conflict="paper_id,user_id"
         ).execute()
-
-    def update_pref_scores(self, user_id: int, scores: dict[str, float]) -> None:
-        """Bulk-update pref_score for the given paper_ids."""
-        for paper_id, pref_score in scores.items():
-            self._db.table("paper_scores").update({"pref_score": pref_score}).eq(
-                "paper_id", paper_id
-            ).eq("user_id", user_id).execute()
 
     # ── Digest ─────────────────────────────────────────────────────────────────
 

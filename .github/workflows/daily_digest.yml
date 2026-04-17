@@ -2,7 +2,7 @@ name: Daily Digest
 
 on:
   schedule:
-    - cron: '0 7 * * *'   # 07:00 UTC daily
+    - cron: '0 6 * * *'   # 06:00 UTC daily
   workflow_dispatch:        # allow manual trigger from GitHub UI
 
 jobs:
