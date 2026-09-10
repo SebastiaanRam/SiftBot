@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
+from telegram.error import Forbidden
 
 if TYPE_CHECKING:
     from db.client import DBClient
@@ -93,11 +94,18 @@ async def send_digest(
     else:
         intro = _INTRO_MESSAGE_COLD.format(threshold=COLD_START_THRESHOLD)
     if not dry_run:
-        await bot.send_message(
-            chat_id=chat_id,
-            text=intro,
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=intro,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Forbidden:
+            # User deactivated their account or blocked the bot — nothing is
+            # deliverable. Let the caller handle deactivation.
+            raise
+        except Exception as exc:
+            print(f"[digest] Failed to send intro message: {exc}")
     else:
         print(f"\n{'='*60}\nINTRO:\n{intro}")
 
