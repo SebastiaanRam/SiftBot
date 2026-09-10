@@ -16,6 +16,7 @@ from datetime import date, timedelta
 
 from dotenv import load_dotenv
 from telegram import Bot
+from telegram.error import Forbidden
 
 from db.client import DBClient
 from worker.fetch import Paper, deduplicate_new, fetch_all, title_hash
@@ -231,14 +232,23 @@ async def main() -> None:
     print(f"[main] Built paper index over {len(all_papers)} papers")
 
     for user in users:
-        await run_for_user(
-            user=user,
-            paper_index=paper_index,
-            db=db,
-            bot=bot,
-            min_score=min_score,
-            dry_run=args.dry_run,
-        )
+        try:
+            await run_for_user(
+                user=user,
+                paper_index=paper_index,
+                db=db,
+                bot=bot,
+                min_score=min_score,
+                dry_run=args.dry_run,
+            )
+        except Forbidden as exc:
+            # Telegram refuses delivery to this user (account deactivated, bot
+            # blocked, chat deleted). Deactivate them so one dead account can't
+            # block the batch and we stop retrying every run.
+            print(f"[main] Deactivating user {user['chat_id']}: {exc}")
+            if not args.dry_run:
+                db.set_user_field(user["chat_id"], active=False)
+            continue
         if not args.dry_run:
             freq = user.get("digest_frequency") or 1
             next_date = (date.today() + timedelta(days=freq)).isoformat()
