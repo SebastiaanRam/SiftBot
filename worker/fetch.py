@@ -348,11 +348,9 @@ def _dedup_within_list(papers: list[Paper]) -> list[Paper]:
 
 def deduplicate_new(papers: list[Paper], db: "DBClient") -> list[Paper]:
     """Return only papers whose title_hash is not already in the database."""
-    new_papers: list[Paper] = []
-    for p in papers:
-        if not db.paper_exists(title_hash(p.title)):
-            new_papers.append(p)
-    return new_papers
+    hashes = [title_hash(p.title) for p in papers]
+    existing = db.get_existing_title_hashes(hashes)
+    return [p for p, h in zip(papers, hashes) if h not in existing]
 
 
 def _env_key(name: str) -> str:
