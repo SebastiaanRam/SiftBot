@@ -102,6 +102,17 @@ class DBClient:
         return existing
 
     @_retry_transient()
+    def get_existing_paper_ids(self, ids: list[str]) -> set[str]:
+        """Return the subset of the given paper ids present in the papers table."""
+        existing: set[str] = set()
+        chunk_size = 200
+        for i in range(0, len(ids), chunk_size):
+            chunk = ids[i : i + chunk_size]
+            res = self._db.table("papers").select("id").in_("id", chunk).execute()
+            existing.update(row["id"] for row in res.data)
+        return existing
+
+    @_retry_transient()
     def upsert_paper(self, paper_dict: dict[str, Any]) -> None:
         self._db.table("papers").upsert(paper_dict, on_conflict="id").execute()
 

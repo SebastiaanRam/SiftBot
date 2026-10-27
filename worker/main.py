@@ -228,8 +228,19 @@ async def main() -> None:
         new_papers = all_papers  # In dry-run, skip DB entirely
 
     # Build TF-IDF index once, shared across all users
-    paper_index = PaperIndex(all_papers)
-    print(f"[main] Built paper index over {len(all_papers)} papers")
+    # Only index papers whose id exists in the DB: title-duplicates stored under
+    # another id were skipped above and would violate the paper_scores FK. Going
+    # by id (not "new") also rescues papers upserted by an earlier crashed run.
+    if args.dry_run:
+        indexed_papers = all_papers
+    else:
+        in_db = db.get_existing_paper_ids([p.id for p in all_papers])
+        indexed_papers = [p for p in all_papers if p.id in in_db]
+    if not indexed_papers:
+        print("[main] No indexable papers. Exiting.")
+        return
+    paper_index = PaperIndex(indexed_papers)
+    print(f"[main] Built paper index over {len(indexed_papers)} papers")
 
     for user in users:
         try:
@@ -248,6 +259,11 @@ async def main() -> None:
             print(f"[main] Deactivating user {user['chat_id']}: {exc}")
             if not args.dry_run:
                 db.set_user_field(user["chat_id"], active=False)
+            continue
+        except Exception as exc:
+            # Don't let one user's failure block the rest of the batch; leave
+            # next_digest_date untouched so they are retried on the next run.
+            print(f"[main] Error processing user {user['chat_id']}: {exc!r}")
             continue
         if not args.dry_run:
             freq = user.get("digest_frequency") or 1
